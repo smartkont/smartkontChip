@@ -159,8 +159,7 @@ void eeromVarCopy() {
   //Serial.println("Inside eeromVarCopy");
   EEPROM.begin(sizeof(struct settings) );
   EEPROM.get(0, user_info );
-  //strncpy(user_info.init,  eeromCheck, sizeof(user_info.init) );
-
+ 
   //initLocal = user_info.init;
   //userWifiIdLocal = user_info.userWifiI;
   //passwordLocal = user_info.password;
@@ -181,7 +180,6 @@ void eeromVarCopy() {
   //Serial.print("user_info.kontSetupflag eeromVarCopy:");
   //Serial.print(user_info.kontSetupflag);
   //Serial.println(":");
-
   
   strlcpy(initLocal, user_info.init, sizeof(user_info.init));
   strlcpy(userWifiIdLocal, user_info.userWifiId, sizeof(user_info.userWifiId));
@@ -198,7 +196,6 @@ void eeromVarCopy() {
   strlcpy(containerIdLocal, user_info.containerId, sizeof(user_info.containerId));
 
   kontSetupflagLocal = user_info.kontSetupflag;
-
 
   //Serial.print("initLocal:");
   //Serial.println(initLocal);
@@ -224,6 +221,7 @@ void eeromVarCopy() {
 
   //Serial.print("kontSetupflagLocal:");
   //Serial.println(kontSetupflagLocal);
+
 }
 
 bool getWiFiIsSavedCustom(){
@@ -338,9 +336,21 @@ bool wifiConnect() {
           //Serial.println(passwordLocal);
           //Serial.println("*****");
           //Serial.println("*****");
+          // Battery performance
+          //WiFi.persistent(false);
 
           WiFi.mode(WIFI_STA); // Change to Station mode
-          WiFi.begin(userWifiIdLocal, passwordLocal);
+          // Battery performance
+          if (!kontSetupflagLocal){
+            //Serial.println("regular connect");
+            WiFi.begin();
+          } else {
+            //Serial.println("First connect");
+            WiFi.begin(userWifiIdLocal, passwordLocal);
+          }
+          
+
+          
           
           //Serial.println("WiFi.status()");
           //Serial.print(WiFi.status());
@@ -386,7 +396,7 @@ bool wifiConnect() {
           // Set the minimum signal quality default 8%
           //wifiManager.setMinimumSignalQuality();
           if(WiFi.status() == WL_CONNECTED){ // Wifi got connected.
-                Serial.println("Wifi connected!!");
+                //Serial.println("Wifi connected!!");
                 wifiConnected = true;
                 byte mac[6];
                 WiFi.macAddress(mac);
@@ -454,7 +464,7 @@ float distanceMeasure() {
   distance = duration/2*.0343; // As of now cosidering speed of sound in dry air (humidity factor not considered)
 
   if(distance>=400 || distance <=2) {
-    Serial.println("Out of range");
+    //Serial.println("Out of range");
     distance=-1000; // -1000 distance when out of scope
   }
 return distance;
@@ -497,14 +507,14 @@ bool sendHttpRequestData () {
     //Serial.println(kontSetupflagLocal);
     
     if (!kontSetupflagLocal){
-      Serial.println("kontSetupflagLocal is false");
+      //Serial.println("kontSetupflagLocal is false");
       http.begin(client, serverNamePath); //Request destination
       http.addHeader("Content-Type", "application/x-www-form-urlencoded"); //content-type header
       // Get from sensor
       float measuredDistance = distanceMeasure();
       httpRequestData = createHttpRequestData(apiKeyValue,measuredDistance, macAddress);
     } else {
-      Serial.println("kontSetupflagLocal is true");
+      //Serial.println("kontSetupflagLocal is true");
 
       // Container setup request to code
 
@@ -524,7 +534,7 @@ bool sendHttpRequestData () {
     bool httpReturnCode = false;
 
     //while(!httpRequestFlag) { // Try multiple time mainely in case of Server issue.
-
+      Serial.println(":");
       Serial.print ("httpRequestData:");
       Serial.println (httpRequestData.c_str());
 
@@ -543,7 +553,7 @@ bool sendHttpRequestData () {
         if(!kontSetupflagLocal) {
           if(payload == "1") {
               //httpRequestFlag=true;
-              blinkLED("green", 1);
+              //blinkLED("green", 1);
               httpReturnCode = true;              
             } else {
               Serial.println("System will retry automatically in next retry!");
@@ -782,6 +792,8 @@ void handlePortal() {
 
 
 void setup() {
+  // Battery performance
+  system_update_cpu_freq(40);
   // Switch off blue light on ESP
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
@@ -849,7 +861,7 @@ do {
 
 
 void loop() {
-Serial.println("Inside Loop");
+//Serial.println("Inside Loop");
 //Serial.print("millis()-configPortalTimeControl:");
 //Serial.println(millis()-configPortalTimeControl);
 server.handleClient();
