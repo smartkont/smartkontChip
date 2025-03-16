@@ -56,6 +56,18 @@ struct settings {
   char password[30];
   char containerId[50];
   bool kontSetupflag;
+
+  IPAddress IP;  // Use the Local IP from Serial Output
+  IPAddress gateway;     // Use the Gateway IP from Serial Output
+  IPAddress subnet; //(255, 255, 252, 0);    // Use the Subnet Mask from Serial Output
+  IPAddress primaryDNS; //(8, 8, 8, 8);      // Google DNS Use Primary DNS from Serial Output
+  IPAddress secondaryDNS; //(8, 8, 4, 4);    // Use Secondary DNS from Serial Output
+  short wifiChannel; // Wifi channel
+  //char bssid[37]; // BSSID // Check the actual char needed shold be 6
+  //uint8_t bssid12[];
+  //String bssidStr;
+  uint8_t bssid[6];
+
   //int ssidnotavailCntr;
 } user_info = {};
 
@@ -68,7 +80,22 @@ struct settings {
   char containerIdLocal[30];
   bool kontSetupflagLocal;
 
+  //Local Variables for wifi connection
+  IPAddress ipLocal;
+  IPAddress gatewayLocal;
+  IPAddress subnetLocal;
+  IPAddress primaryDNSLocal;
+  IPAddress secondaryDNSLocal;
+  short wifiChannelLocal;
+  String bssidStrLocal;
+  //char bssidLocal[37];
+  //uint8_t bssid12Local;
+  bool saveInfotoERROMFlag = false; // When true save above wifi connection local variables to EEROM
+  //uint8_t* bssidLocal[]; // CHeck this
+  uint8_t bssidLocal[6];
 
+
+  
 // Process controlling variables
 int wifiNotConnCntr = 0; // Number of time wifi is not connected for consecutive times.
 int httpRequestCntr = 0; // Number of time wifi is not connected for consecutive times.
@@ -197,6 +224,48 @@ void eeromVarCopy() {
 
   kontSetupflagLocal = user_info.kontSetupflag;
 
+  ipLocal = user_info.IP;
+  gatewayLocal = user_info.gateway;
+  subnetLocal = user_info.subnet;
+  primaryDNSLocal = user_info.primaryDNS;
+  secondaryDNSLocal = user_info.secondaryDNS;
+  wifiChannelLocal = user_info.wifiChannel;
+  //strlcpy(bssidLocal, user_info.bssid, sizeof(user_info.bssid));
+  //bssid12Local = user_info.bssid12;
+  //bssidStrLocal = user_info.bssidStr;
+  // Copying bssid to local variable  
+  for (int i = 0; i < 6; i++) {
+      bssidLocal[i] = user_info.bssid[i];
+    }
+  
+
+
+  //Serial.print("ipLocal:");
+  //Serial.println(ipLocal);
+
+  //Serial.print("gatewayLocal:");
+  //Serial.println(gatewayLocal);
+
+  //Serial.print("subnetLocal:");
+  //Serial.println(subnetLocal);
+
+  //Serial.print("primaryDNSLocal:");
+  //Serial.println(primaryDNSLocal);
+
+  //Serial.print("secondaryDNSLocal:");
+  //Serial.println(secondaryDNSLocal);
+ 
+  //Serial.print("wifiChannelLocal:");
+  //Serial.println(wifiChannelLocal);
+
+  //Serial.print("bssidLocal:");
+
+  //for (int i = 0; i < 6; i++) {
+      //Serial.printf("%02X", bssidLocal[i]);
+      //if (i < 5) Serial.print(":");
+    //}
+
+
   //Serial.print("initLocal:");
   //Serial.println(initLocal);
 
@@ -274,11 +343,14 @@ String scanNetworks () {
 
     networksHTML += "<option value='" + WiFi.SSID(i) + "'>" + WiFi.SSID(i) + "</option>";
 
-      //Serial.print("Network name: ");
-      //Serial.println(WiFi.SSID(i));
-      //Serial.print("Signal strength: ");
-      //Serial.println(WiFi.RSSI(i));
-      //Serial.println("-----------------------");
+      Serial.print("Network name: ");
+      Serial.println(WiFi.SSID(i));
+      Serial.print(" | Channel: ");
+      Serial.println(WiFi.channel(i));
+      Serial.print("Signal strength: ");
+      Serial.println(WiFi.RSSI(i));
+      Serial.println("-----------------------");
+
 
   }
   networksHTML += "</select>";
@@ -288,132 +360,177 @@ String scanNetworks () {
 
 
 // Connect to Wifi network
+// Wifi connect trying 3 time 2 with regular connect and one with scan method connect
 bool wifiConnect() {
   //Serial.begin(115200);  
   //Serial.println("Inside wifi connect");
-  
-  int wifiConnectTryCnt = 0; // Config portal is correct but not able to connect to wifi weak signal or some technical issue, try 2 times before give up.
-  bool configPortalSetupflag = false; // Not used // ConfigPortal entry correct/ Not
-  
-  if(!getWiFiIsSavedCustom() || wifiWrongpasswdOrSSID){
-  // First time no access point is setup EEROM check or wrong password was saved in earlier try or Wifi password changed
-    //Serial.println("Wifi id or passwd not saved or wrong password is saved");
-      if(stopConfigPortalCustom()) { // Always retrun true if code changed then else condition needs to be created.
-      // Stop the config Portal Custom
-        //Serial.println("stopConfigPortalCustom");
-        delay(2000); // wait 2 seconds before starting again.
-        wifiSavedFlag = false; // Config portal started meaning either wifi id/passwd not saved or it is wrong.
-        configPortalSetupflag = startConfigPortalCustom(); // Start the config Portal Custom
-        //if(configPortalSetupflag){ ** Do we need to blink the LED?
-        // config portal started then blink three times
-          //blinkLED("red", 3);
-        //}
-        //Serial.print("ConfigPortalSetupflag:");
-        //Serial.print(configPortalSetupflag);
+
+  if(WiFi.status() != WL_CONNECTED) {
+
+      int wifiConnectTryCnt = 0; // Config portal is correct but not able to connect to wifi weak signal or some technical issue, try 2 times before give up.
+      bool configPortalSetupflag = false; // Not used // ConfigPortal entry correct/ Not
+      
+      if(!getWiFiIsSavedCustom() || wifiWrongpasswdOrSSID){
+      // First time no access point is setup EEROM check or wrong password was saved in earlier try or Wifi password changed
+        //Serial.println("Wifi id or passwd not saved or wrong password is saved");
+          if(stopConfigPortalCustom()) { // Always retrun true if code changed then else condition needs to be created.
+          // Stop the config Portal Custom
+            //Serial.println("stopConfigPortalCustom");
+            delay(2000); // wait 2 seconds before starting again.
+            wifiSavedFlag = false; // Config portal started meaning either wifi id/passwd not saved or it is wrong.
+            configPortalSetupflag = startConfigPortalCustom(); // Start the config Portal Custom
+            //if(configPortalSetupflag){ ** Do we need to blink the LED?
+            // config portal started then blink three times
+              //blinkLED("red", 3);
+            //}
+            //Serial.print("ConfigPortalSetupflag:");
+            //Serial.print(configPortalSetupflag);
+          }
+      } else { // Access point is already saved.
+        //Serial.println("Wifi id/passwd saved");
+        configPortalSetupflag = true;
+        wifiSavedFlag = true;
       }
-  } else { // Access point is already saved.
-    //Serial.println("Wifi id/passwd saved");
-    configPortalSetupflag = true;
-    wifiSavedFlag = true;
-  }
 
-  uint32_t setupProcessTime=millis(); 
+      uint32_t setupProcessTime=millis(); 
 
-  if(wifiSavedFlag) {
-      //Serial.println("Inside wifiSavedFlag");
-      do{
-        uint32_t wifiConnectTime=millis(); // Wait for connection after config portal is setup
-        //Serial.print("Do Loop wifiSavedFlag:");
-        //Serial.print(wifiSavedFlag);
+      if(wifiSavedFlag) {
+          //Serial.println("Inside wifiSavedFlag");
+          do{
+            uint32_t wifiConnectTime=millis(); // Wait for connection after config portal is setup
+            //Serial.print("Do Loop wifiSavedFlag:");
+            //Serial.print(wifiSavedFlag);
 
-          // Only if local copy doesn't work
-          //EEPROM.begin(sizeof(struct settings) );
-          //EEPROM.get( 0, user_info );
-          //Serial.println("***WIFI**");
-          //Serial.print(userWifiIdLocal);
-          //Serial.println("*****");
-          //Serial.print("***PASSWD_LOCAL**");
-          //Serial.println(passwordLocal);
-          //Serial.println("*****");
-          //Serial.println("*****");
-          // Battery performance
-          //WiFi.persistent(false);
+              // Only if local copy doesn't work
+              //EEPROM.begin(sizeof(struct settings) );
+              //EEPROM.get( 0, user_info );
+              //Serial.println("***WIFI**");
+              //Serial.print(userWifiIdLocal);
+              //Serial.println("*****");
+              //Serial.print("***PASSWD_LOCAL**");
+              //Serial.println(passwordLocal);
+              //Serial.println("*****");
+              //Serial.println("*****");
+              // Battery performance
+              //WiFi.persistent(false);
 
-          WiFi.mode(WIFI_STA); // Change to Station mode
-          // Battery performance
-          if (!kontSetupflagLocal){
-            //Serial.println("regular connect");
-            WiFi.begin();
-          } else {
-            //Serial.println("First connect");
-            WiFi.begin(userWifiIdLocal, passwordLocal);
-          }
-          
+              //WiFi.mode(WIFI_STA); // Change to Station mode
+              // Battery performance
+              if (!kontSetupflagLocal && wifiConnectTryCnt < 2){
+                Serial.println("regular connect");
 
-          
-          
-          //Serial.println("WiFi.status()");
-          //Serial.print(WiFi.status());
-            /* 3.1.2 not very stable
-                WL_NO_SHIELD        = 255,   // for compatibility with WiFi Shield library
-                WL_IDLE_STATUS      = 0,
-                WL_NO_SSID_AVAIL    = 1,
-                WL_SCAN_COMPLETED   = 2,
-                WL_CONNECTED        = 3,
-                WL_CONNECT_FAILED   = 4,
-                WL_CONNECTION_LOST  = 5,
-                WL_WRONG_PASSWORD   = 6,
-                WL_DISCONNECTED     = 7
-            */
-          while (WiFi.status() != WL_CONNECTED && !(wifiWrongpasswdOrSSID) && (millis()-wifiConnectTime<60000))  { // Wait for 60 second each time before giving up.
-            
-            //if(WiFi.status() == WL_WRONG_PASSWORD || WiFi.status() == WL_NO_SSID_AVAIL) {
-            //Serial.print(".");
-            //Serial.print(WiFi.status()); // This should be commented
-            if(WiFi.status() == WL_NO_SSID_AVAIL) {
-              Serial.println("SSID not available, possible wifi connection lost!");
-              // Break the loop and go to sleep mode
-              wifiConnectTryCnt++; // if wifi is not avail then only try twice which is controled by retry counter at the setup function.
-              break; // Break while loop
+                //WiFi.begin(userWifiIdLocal, passwordLocal, 2, {0x176, 0x25, 0x33, 0x129, 0x119, 0x34});
+                //uint8_t bssid1[] = {0xB0, 0x19, 0x21, 0x81, 0x77, 0x22};
+                //WiFi.begin(userWifiIdLocal, passwordLocal, 2, bssid1);
+                //WiFi.begin(userWifiIdLocal, passwordLocal, 2);
+                WiFi.persistent(false);
+                WiFi.mode(WIFI_STA); // Use at the begning of Setup
+                WiFi.setAutoConnect(true);
+                WiFi.setAutoReconnect(true);
+
+
+                //IPAddress local_IP(192, 168, 68, 91);  // Use the Local IP from Serial Output
+                //IPAddress gateway(192, 168, 68, 1);     // Use the Gateway IP from Serial Output
+                //IPAddress subnet(255, 255, 252, 0);    // Use the Subnet Mask from Serial Output
+
+                //IPAddress primaryDNS(8, 8, 8, 8);      // Google DNS Use Primary DNS from Serial Output
+                //IPAddress secondaryDNS(8, 8, 4, 4);    // Use Secondary DNS from Serial Output
+
+                //IPAddress primaryDNS(209, 197, 128, 2);      // Use Primary DNS from Serial Output
+                //IPAddress secondaryDNS(209, 197, 128, 5);    // Use Secondary DNS from Serial Output
+                
+
+                WiFi.config(ipLocal, gatewayLocal, subnetLocal, primaryDNSLocal, secondaryDNSLocal);
+
+                //WIFI_NONE_SLEEP, WIFI_LIGHT_SLEEP and WIFI_MODEM_SLEEP
+                //WiFi.setSleepMode(WIFI_NONE_SLEEP); 
+
+                WiFi.begin(userWifiIdLocal, passwordLocal, wifiChannelLocal, bssidLocal);
+                saveInfotoERROMFlag = false; // No need to save to EEROM, needed ?
+                //WiFi.begin(userWifiIdLocal, passwordLocal);
+              } else {
+                //Serial.println("First connect");
+                WiFi.begin(userWifiIdLocal, passwordLocal);
+                saveInfotoERROMFlag = true; // Meaning save Wifi IP address data to EEROM
+              }
               
-              // Try in 15 mins for 1 hour if it doesn't work then start the config portal and ask user to setup id/passwd again--- ?? needs to be coded
 
-            }
-            if (WiFi.status() == WL_CONNECT_FAILED) { // Wrong passwd main cause
-              Serial.println("Wifi connection failed, start the config portal");
+              
+              
+              //Serial.println("WiFi.status()");
+              //Serial.print(WiFi.status());
+                /* 3.1.2 not very stable
+                    WL_NO_SHIELD        = 255,   // for compatibility with WiFi Shield library
+                    WL_IDLE_STATUS      = 0,
+                    WL_NO_SSID_AVAIL    = 1,
+                    WL_SCAN_COMPLETED   = 2,
+                    WL_CONNECTED        = 3,
+                    WL_CONNECT_FAILED   = 4,
+                    WL_CONNECTION_LOST  = 5,
+                    WL_WRONG_PASSWORD   = 6,
+                    WL_DISCONNECTED     = 7
+                */
+              int wifiStatus = WiFi.status();
+              //while (WiFi.status() != WL_CONNECTED && !(wifiWrongpasswdOrSSID) && (millis()-wifiConnectTime<60000))  { // Wait for 60 second each time before giving up.
+              while (wifiStatus != WL_CONNECTED && !(wifiWrongpasswdOrSSID) && (millis()-wifiConnectTime<15000))  { // Wait for 15 second each time before giving up.
+                
+                //if(WiFi.status() == WL_WRONG_PASSWORD || WiFi.status() == WL_NO_SSID_AVAIL) {
+                //Serial.print(".");
+                //Serial.print(WiFi.status()); // This should be commented
+                if(wifiStatus == WL_NO_SSID_AVAIL) { 
+                  Serial.println("SSID not available, possible wifi connection lost!");
+                  // Break the loop and go to sleep mode
+                  //wifiConnectTryCnt++; // if wifi is not avail then only try twice which is controled by retry counter at the setup function.
+                  break; // Break while loop
+                  
+                  // Try in 15 mins for 1 hour if it doesn't work then start the config portal and ask user to setup id/passwd again--- ?? needs to be coded
 
-              //strncpy(user_info.init,  eeromClear, sizeof(user_info.init) );// Not needed as below flag will bring the portal up 
-              
-              // restart ESP after eerom edit?
-              
-              wifiWrongpasswdOrSSID = true;
-              break;
-              
-            }
-            //yield();
-            delay(1000); // 1 second delay in checking the status
-          }
-          // Set the minimum signal quality default 8%
-          //wifiManager.setMinimumSignalQuality();
-          if(WiFi.status() == WL_CONNECTED){ // Wifi got connected.
-                //Serial.println("Wifi connected!!");
-                wifiConnected = true;
-                byte mac[6];
-                WiFi.macAddress(mac);
+                }
+                
+                if (wifiStatus == WL_CONNECT_FAILED) { // Wrong passwd main cause 
+                  Serial.println("Wifi connection failed, start the config portal");
 
-                macAddress = String(mac[5], HEX) +(":") + 
-                            String(mac[4], HEX) +(":") + 
-                            String(mac[3], HEX) +(":") + 
-                            String(mac[2], HEX) +(":") + 
-                            String(mac[1], HEX) +(":") + 
-                            String(mac[0], HEX) +(":") ;
-                //Serial.print("**macAddress : ");
-                //Serial.println(macAddress);
-              } else { // Increase the counter to try the wifi again
-                          wifiConnectTryCnt++;
-                    } 
-      } while((!wifiConnected) && (wifiConnectTryCnt<2) &&  !(wifiWrongpasswdOrSSID) && ((millis()-setupProcessTime)<90000)); // 900000??
-    }
+                  //strncpy(user_info.init,  eeromClear, sizeof(user_info.init) );// Not needed as below flag will bring the portal up 
+                  
+                  // restart ESP after eerom edit?
+                  
+                  wifiWrongpasswdOrSSID = true;
+                  break;
+                  
+                }
+                Serial.println(".");
+                //yield();
+                delay(100); // .25 second delay in checking the status
+                wifiStatus = WiFi.status();
+              }
+              //Serial.println("After While loop");
+              // Set the minimum signal quality default 8%
+              //wifiManager.setMinimumSignalQuality();
+              //if(WiFi.status() == WL_CONNECTED){ // Wifi got connected.
+              if(wifiStatus == WL_CONNECTED){ // Wifi got connected.
+                    //Serial.println("Wifi connected!!");
+                    wifiConnected = true;
+                    byte mac[6];
+                    WiFi.macAddress(mac);
+
+                    macAddress = String(mac[5], HEX) +(":") + 
+                                String(mac[4], HEX) +(":") + 
+                                String(mac[3], HEX) +(":") + 
+                                String(mac[2], HEX) +(":") + 
+                                String(mac[1], HEX) +(":") + 
+                                String(mac[0], HEX) +(":") ;
+                    //Serial.print("**macAddress : ");
+                    //Serial.println(macAddress);
+                  } else { // Increase the counter to try the wifi again
+                              wifiConnectTryCnt++;
+                              //delay(5000); // Delay 5 second to reconnect if wifi is not connected in first try
+                        } 
+          } while((!wifiConnected) && (wifiConnectTryCnt<3) &&  !(wifiWrongpasswdOrSSID) && ((millis()-setupProcessTime)<90000)); // 900000??
+      }
+      } else {
+        // Wifi is connected
+        wifiConnected = true;
+      }
   //Serial.println("Inside wifi connect END!");
   return wifiConnected;
 }
@@ -470,63 +587,163 @@ float distanceMeasure() {
 return distance;
 }
 
-// Create http request
-String createHttpRequestData (String apikeyValue_f, float distanceValue_f, String  macAddress_f) {
+// Create http request for regular readings
+String createHttpRequestData (String apikeyValue_f, float distanceValue_f) {
   //******** String class uses lot of memory try to replace option SafeString
   String postApiKey="api_key=";
   String postDistance="&distance=";
-  String postMacAddress = "&mac=";
+  //String postMacAddress = "&mac=";
   String postDeviceId = "&deviceId=";
-  String httpRequestData_f = postApiKey + apikeyValue_f + postDistance + distanceValue_f + postDeviceId + containerIdLocal + postMacAddress + macAddress_f  ;
+  //String httpRequestData_f = postApiKey + apikeyValue_f + postDistance + distanceValue_f + postDeviceId + containerIdLocal + postMacAddress + macAddress_f  ;
+  String httpRequestData_f = postApiKey + apikeyValue_f + postDistance + distanceValue_f + postDeviceId + containerIdLocal;
   return httpRequestData_f;
 }
 
 
 // Create http request container Setup
-String createHttpRequestSetup (String apikeyValue_f, String userContainerId, String  macAddress_f, float measuredDistance_f) { // This is if findout what size of container is
+String createHttpRequestSetup (String apikeyValue_f, String userContainerId, float measuredDistance_f) { // This is if findout what size of container is
 //String createHttpRequestSetup (String apikeyValue_f, String userContainerId, String  macAddress_f) {
   //******** String class uses lot of memory try to replace option SafeString
   String postApiKey="api_key=";
   String postContainerId="&containerId=";
-  String postMacAddress = "&mac=";
+  //String postMacAddress = "&mac=";
   String postDistance="&distance=";
   //userContainerId = 1000;
 
-  String httpRequestData_f = postApiKey + apikeyValue_f + postContainerId + userContainerId + postMacAddress + macAddress_f + postDistance + measuredDistance_f ;
+  String httpRequestData_f = postApiKey + apikeyValue_f + postContainerId + userContainerId + postDistance + measuredDistance_f ;
+  //String httpRequestData_f = postApiKey + apikeyValue_f + postContainerId + userContainerId + postMacAddress + macAddress_f + postDistance + measuredDistance_f ;
   //String httpRequestData_f = postApiKey + apikeyValue_f + postContainerId + userContainerId + postMacAddress + macAddress_f ;
   return httpRequestData_f;
 }
 
+void disconnectWifi(){
+    // Disconnect wifi
+    //WiFi.disconnect();
+    //Serial.println("Disconnect Wifi!");
+    WiFi.disconnect(true);
+    WiFi.mode(WIFI_OFF);
+}
+
+
+void saveInfotoEEROM(){
+    
+              Serial.print("Local IP: ");
+              Serial.println(WiFi.localIP());  // Get local IP address
+              user_info.IP=WiFi.localIP();
+              
+              Serial.print("Gateway IP: ");
+              Serial.println(WiFi.gatewayIP());  // Get gateway IP
+              user_info.gateway=WiFi.gatewayIP();
+              
+              Serial.print("Subnet Mask: ");
+              Serial.println(WiFi.subnetMask());  // Get subnet mask
+              user_info.subnet=WiFi.subnetMask();
+
+              Serial.print("Primary DNS: ");
+              Serial.println(WiFi.dnsIP(0));  // Get primary DNS
+              user_info.primaryDNS=WiFi.dnsIP(0);
+
+              Serial.print("Secondary DNS: ");
+              Serial.println(WiFi.dnsIP(1));  // Get secondary DNS
+              user_info.secondaryDNS=WiFi.dnsIP(1);
+
+              Serial.print("BSSID: ");
+
+              memcpy(user_info.bssid, WiFi.BSSID(), 6);
+
+              /*const uint8_t* bssidPtr = WiFi.BSSID();
+              char bssidStr[18];
+
+              sprintf(bssidStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+              bssidPtr[0], bssidPtr[1], bssidPtr[2],
+              bssidPtr[3], bssidPtr[4], bssidPtr[5]);
+
+              Serial.println("bssidStr:");
+              Serial.println(bssidStr);
+
+              user_info.bssidStr=bssidStr;
+              */
+              //user_info.bssid[] = "{0xB0, 0x19, 0x21, 0x81, 0x77, 0x22}";
+              //user_info.bssid = WiFi.BSSID();
+              //uint8_t* bssidTemp = WiFi.BSSID();
+              //Serial.print("String BSSID" ) ;
+              //Serial.println(WiFi.BSSIDstr());
+
+              //char bssidTemp1[100];
+
+              /*Serial.print("BSSID for WiFi.begin: ");
+
+                
+                // Print each byte in decimal format (this is the format you can use)
+               Serial.print("{");
+                strcat(bssidTemp1, "{");
+                  for (int i = 0; i < 6; i++) {
+                    // Print the byte in hexadecimal format
+                    Serial.print("0x");
+                    strcat(bssidTemp1, "0x");
+                    if (bssidTemp[i] < 0x10) {
+                      Serial.print("0");  // Add leading zero if byte is less than 0x10
+                      strcat(bssidTemp1, "0");
+                    }
+                    Serial.print(bssidTemp[i], HEX);  // Print the byte in HEX format
+                    //strcat(bssidTemp1, bssidTemp[i]);
+                    if (i < 5) {
+                      Serial.print(", ");  // Add a comma and space between bytes
+                      strcat(bssidTemp1, ", ");
+                    }
+                  }
+                  Serial.println("}");
+                  strcat(bssidTemp1, "} ");
+
+                  Serial.print("BSSID Concatinated :");
+                  Serial.println(bssidTemp1);
+              */
+
+              // SET EEROM Boolean variable to True conntainer set up complete ** CHANGE
+              // Only when kont is setting up
+              if(kontSetupflagLocal) {
+                Serial.println("Change the flag in EEROM that container is setup");
+                user_info.kontSetupflag = false; 
+              }
+              
+              EEPROM.put(0, user_info);
+              EEPROM.commit(); // Change the kontflag only
+}
+
+String createHttpMasterData () {
+  String httpMasterData;
+      if (!kontSetupflagLocal){
+      //Serial.println("kontSetupflagLocal is false Seperate function");
+      // Get from sensor
+      float measuredDistance = distanceMeasure();
+      httpMasterData = createHttpRequestData(apiKeyValue,measuredDistance);
+    } else {
+      //Serial.println("kontSetupflagLocal is true Seperate function");
+      // Get from sensor
+      float measuredDistance = distanceMeasure(); // Initial setup empty container distance measurement.
+      httpMasterData = createHttpRequestSetup(apiKeyValue,containerIdLocal, measuredDistance);
+    }
+    return httpMasterData;
+}
+
+
 // Send http request to web server
-bool sendHttpRequestData () {
+bool sendHttpRequestData (String httpRequestData) {
     HTTPClient http;    //Declare object of class HTTPClient
     WiFiClient client;  // Object for WiFi Client
 
-    String httpRequestData;
     //Serial.print("kontSetupflagLocal");
     //Serial.println(kontSetupflagLocal);
     
     if (!kontSetupflagLocal){
       //Serial.println("kontSetupflagLocal is false");
       http.begin(client, serverNamePath); //Request destination
-      http.addHeader("Content-Type", "application/x-www-form-urlencoded"); //content-type header
-      // Get from sensor
-      float measuredDistance = distanceMeasure();
-      httpRequestData = createHttpRequestData(apiKeyValue,measuredDistance, macAddress);
     } else {
       //Serial.println("kontSetupflagLocal is true");
-
-      // Container setup request to code
-
-      //EEPROM.begin(sizeof(struct settings) );
-      //EEPROM.get( 0, user_info );
-      float measuredDistance = distanceMeasure(); // Initial setup empty container distance measurement.
       // One time to setup the flag
       http.begin(client, initialSetupPath); //Request destination
-      http.addHeader("Content-Type", "application/x-www-form-urlencoded"); //content-type header
-      httpRequestData = createHttpRequestSetup(apiKeyValue,containerIdLocal, macAddress, measuredDistance);
-      //httpRequestData = createHttpRequestSetup(apiKeyValue,containerIdLocal, macAddress);
     }
+    http.addHeader("Content-Type", "application/x-www-form-urlencoded"); //content-type header
     
     
     //int httpSendCounter=0; // Try sending the data 2 times if not successful in first time
@@ -534,15 +751,33 @@ bool sendHttpRequestData () {
     bool httpReturnCode = false;
 
     //while(!httpRequestFlag) { // Try multiple time mainely in case of Server issue.
-      Serial.println(":");
+      //Serial.print(":");
+      //Serial.print ("httpRequestData:");
+      //Serial.println (httpRequestData.c_str());
+
+    // Connect to wifi and if success send http request
+    if(wifiConnect()) { 
+      // Save static IP address to EEROM
+      if(kontSetupflagLocal || saveInfotoERROMFlag) {
+          Serial.println("Save Static IP to EEROM");
+          saveInfotoEEROM();// kont is setup change the flag
+       }
+
+      //Serial.println(WiFi.BSSID(i), HEX);
+
+      String postMacAddress = "&mac=";
+      httpRequestData = httpRequestData + postMacAddress + macAddress;
+      Serial.print(":");
       Serial.print ("httpRequestData:");
       Serial.println (httpRequestData.c_str());
 
       httpCode = http.POST(httpRequestData.c_str());   //Send the request after changing the String object to char*
-      //Serial.print("HTTP Code");
+      //Serial.println("HTTP Response received");
       //Serial.println(httpCode);
 
       if(httpCode == 200) {
+
+
         // Payload 1 Success and 0 Failure
        const String& payload = removeSpaces(http.getString());
        
@@ -550,27 +785,32 @@ bool sendHttpRequestData () {
        Serial.print(payload);    //Print request response payload
        Serial.println(":");
 
+
+       
+
         if(!kontSetupflagLocal) {
+             
           if(payload == "1") {
-              //httpRequestFlag=true;
-              //blinkLED("green", 1);
-              httpReturnCode = true;              
+            // Disconnect Wifi to conserve power
+            disconnectWifi();
+            //httpRequestFlag=true;
+            //blinkLED("green", 1);
+            httpReturnCode = true;              
             } else {
               Serial.println("System will retry automatically in next retry!");
               //httpSendCounter++;
               blinkLED("red", 1);
             }
-        } else if (kontSetupflagLocal){// kont is not setup yet
+        } else if (kontSetupflagLocal){
             if(payload == "1") {
-              Serial.println("Change the flag in EEROM that container is setup");
-              // SET EEROM Boolean variable to True conntainer set up complete ** CHANGE
-              user_info.kontSetupflag = false; 
-              EEPROM.put(0, user_info);
-              EEPROM.commit(); // Change the kontflag only
+              // Disconnect Wifi to conserve power
+              disconnectWifi();
               httpReturnCode = true;
               blinkLED("green", 3); // 3 Green flashes meaning kont is setup
-
             } else {
+              // Disconnect Wifi to conserve power
+              //disconnectWifi();
+              
               Serial.println("Retry: Ask user to press reset button after 1 min to update the mac address and containerId");
               //httpRequestFlag=true;
               //httpSendCounter++;
@@ -593,6 +833,10 @@ bool sendHttpRequestData () {
            //}
 
        }
+
+    } else {
+      wifiNotConnCntr++;
+    }
        
     //} // Do we need a retry ??
     http.end();  //Close connection
@@ -667,10 +911,11 @@ void deepSleep(const int sleepTimeSecs) {
   //Serial.begin(115200);
   // Code to sleep mode.
   // ********** Also add the code to put the sensor in sleep mode
-  Serial.print("Going to deep sleep mode for seconds:");
-  Serial.println(sleepTimeSecs);
+  
   int sleepTimeSecsCal = sleepTimeSecs * 1000000;
   shutLED();
+  Serial.print("END! - > Going to deep sleep mode for seconds:");
+  Serial.println(sleepTimeSecs);
   ESP.deepSleep(sleepTimeSecsCal);
   Serial.println("Wake up!");
 }
@@ -762,7 +1007,7 @@ void handlePortal() {
 
     EEPROM.put(0, user_info);
     EEPROM.commit();
-    wifiSavedFlag = true;
+    wifiSavedFlag = true; // Not really as needed as ESP restarted after this
     //Serial.println("user_wifi put:");
     //Serial.println(user_info.emailId);
     //EEPROM.put(60, user_info); // Change to dynamic
@@ -792,14 +1037,25 @@ void handlePortal() {
 
 
 void setup() {
+  Serial.begin(115200);
+  Serial.println("Start");
+  
+  // Set wifi to station mode
+  
+  
+  //Serial.print("CPU Frequencey before");
+  //Serial.println(ESP.getCpuFreqMHz());
   // Battery performance
-  system_update_cpu_freq(40);
+  //ESP.setCpuFreqMHz(40);
+  //Serial.print("CPU Frequencey after");
+  //Serial.println(ESP.getCpuFreqMHz());
+
   // Switch off blue light on ESP
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  Serial.begin(115200);
-  delay(100);// 2 Second delay can be removed...
+  
+  delay(100);// Can this be reduced furthur?? 
   //Serial.println("Inside setup");
   
   // Set Input output pins
@@ -813,19 +1069,21 @@ void setup() {
   // Make a local copy of EEROM
   eeromVarCopy();
 
-do {
-  if (WiFi.status() != WL_CONNECTED) { //Check WiFi connection status 
-    //Serial.println("Inside WiFi.status() != WL_CONNECTED");
-    if(!wifiConnect()){// Connecting to wifi, if not connected
-        //Serial.println("Inside Wifi no Connected");
-        wifiNotConnCntr++; // increase how much time wifi is not connected since chip started
-      } 
-  }
+  String requestMasterData = createHttpMasterData();
 
-  if(WiFi.status() == WL_CONNECTED) {
+do {
+ // if (WiFi.status() != WL_CONNECTED) { //Check WiFi connection status 
+    //Serial.println("Inside WiFi.status() != WL_CONNECTED");
+    //if(!wifiConnect()){// Connecting to wifi, if not connected
+      //  Serial.println("Inside Wifi no Connected");
+//        wifiNotConnCntr++; // increase how much time wifi is not connected since chip started
+  //    } 
+  //}
+
+ // if(WiFi.status() == WL_CONNECTED) {
   //if(wifiConnected) {
-    //Serial.println("Inside Wifi Connected");
-      bool requestStat = sendHttpRequestData();
+      //Serial.println("Calling http request");
+      bool requestStat = sendHttpRequestData(requestMasterData);
       
       if (requestStat) { 
       // If request is sent then go to deepSleep mode. There is a hack in sendHttpRequestData which will return true even if request isnot sent successfully so that chip go to sleep mode.
@@ -835,10 +1093,13 @@ do {
         httpRequestCntr++; // Http request not sent counter, try twice http request
       }
 
-  }
-
-  if((wifiNotConnCntr>=2 && wifiSavedFlag) || (httpRequestCntr >=2 && wifiSavedFlag)) { // Restart ESP if wifiConnect is not working for 2 time in a sequence.
-        Serial.println("Restarting ESP");
+  //}
+  // Wifi connect is already tried in wifiConnect funtion 3 times
+  /* Wifi reconnect already try 3 time in wifi connect function so if still not connected then sleep; 
+      if wifi is connected but still http request not send then try again and same wifi connection will be used */ 
+  if((wifiNotConnCntr>=1 && wifiSavedFlag) || (httpRequestCntr >=2 && wifiSavedFlag)) { // Restart ESP if wifiConnect is not working for 2 time in a sequence.
+        Serial.println("Sleep the ESP");
+        disconnectWifi();
         deepSleep(sleepTimer); // let it go to sleep for 30 mins, if it doesn't more retry alert can be made visible on app that recording is not happening, please check wifi strength
         //restartESP();
   } // Saving something to permanent memory so it doesn't go in infinite loop after number of retiries to save batteries.
@@ -851,7 +1112,7 @@ do {
   //Serial.print("wifiWrongpasswdOrSSID:");
   //Serial.println(wifiWrongpasswdOrSSID);
 
-} while(wifiNotConnCntr < 3 && wifiSavedFlag && httpRequestCntr < 3); // Retry 2 times ESP will restart after 2 tries? should it go to sleep
+} while(wifiNotConnCntr < 1 && wifiSavedFlag && httpRequestCntr < 3); // Retry 2 times ESP will restart after 2 tries? should it go to sleep
 
 
  configPortalTimeControl=millis(); 
