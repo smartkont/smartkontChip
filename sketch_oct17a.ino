@@ -129,7 +129,7 @@ const int PIN_RED = D1;
 
 
 // Sonic sensor distance and duration measurement
-long  duration;
+long duration;
 int distance;
 
 
@@ -566,7 +566,7 @@ float distanceMeasure() {
 
   setupSensorPinModes();
   sensrPwrPinReady();
-  delay(75); // 10 Seconds delay to start .. Needed ? to have the seonsor ready for the function
+  delay(750); // 10 Seconds delay to start .. Needed ? to have the seonsor ready for the function
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
   digitalWrite(trigPin, HIGH);
@@ -574,9 +574,11 @@ float distanceMeasure() {
   digitalWrite(trigPin, LOW);
 
   duration = pulseIn(echoPin, HIGH);
-
   // Put the sensor to sleep as soon distance is measured
   sensrPwrPinSleep();
+
+  //Serial.print("duration:");
+  //Serial.println(duration);
   
   distance = duration/2*.0343; // As of now cosidering speed of sound in dry air (humidity factor not considered)
 
@@ -584,6 +586,7 @@ float distanceMeasure() {
     //Serial.println("Out of range");
     distance=-1000; // -1000 distance when out of scope
   }
+
 return distance;
 }
 
@@ -723,6 +726,8 @@ String createHttpMasterData () {
       float measuredDistance = distanceMeasure(); // Initial setup empty container distance measurement.
       httpMasterData = createHttpRequestSetup(apiKeyValue,containerIdLocal, measuredDistance);
     }
+    //Serial.print(":httpMasterData:");
+    //Serial.println(httpMasterData);
     return httpMasterData;
 }
 
@@ -1039,6 +1044,7 @@ void handlePortal() {
 void setup() {
   Serial.begin(115200);
   Serial.println("Start");
+  digitalWrite(snsrPwrPin, HIGH);
   
   // Set wifi to station mode
   
