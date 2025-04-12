@@ -129,7 +129,7 @@ const int PIN_RED = D1;
 
 
 // Sonic sensor distance and duration measurement
-long duration;
+long  duration;
 int distance;
 
 
@@ -582,7 +582,7 @@ float distanceMeasure() {
   
   distance = duration/2*.0343; // As of now cosidering speed of sound in dry air (humidity factor not considered)
 
-  if(distance>=400 || distance <=2) {
+  if(distance>=400 || distance <=.2) { // Distance less than 2 mm and greater than 400 CM
     //Serial.println("Out of range");
     distance=-1000; // -1000 distance when out of scope
   }
