@@ -13,26 +13,17 @@ Legal statement this code is the property of Financial Minds Consulting Ltd. Can
 
 /* To do 
 1. Put the ultrasonic sensor to sleep mode. DONE
-2. LED light display as needed on different action like setup mode, normal function mode etc. DONE
-3. LED blink  DONE
-    Single blink once sending the data to server (distance) green or blue
-    Red blink 1 in every 5 seconds when setup is DONE
-    Red blink 2 when sencinding the data to server and have issues
+
 4. ESP light to put off. GPIO2 pin 
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);
-5. Wifi password problem DONE
+
 
 
 6. Erase the EEROM to factory reset using button or somehow.
-7. WIFI ssid changed or put off for some time
+7. WIFI ssid changed or put off for some time - Partially done
 8. Bbattery check indicator
 
-
-20250709
-1. LED light blink add
-2. Restart config portal check
-3. 
 
 */
 
@@ -111,6 +102,8 @@ bool wifiSavedFlag = false; // Flag to initialize wifi is saved in EEROM
 bool configPortalONFlag = false; // Flag to initialize wifi is saved in EEROM
 bool wifiWrongpasswdOrSSID = false; // Flag to initialize wifi is saved in EEROM
 bool wifiConnected = false; // Flag to initialize wifi is saved in EEROM
+
+// ESP Sleep timers
 const int sleepTimer=120; // ESP sleep timer
 const int sixhoursSleepTimer=6; // Long sleep 2 days if not able to connect for 3 hrs to conserve battery
 const int twoDaySleepTimer=48; // Long sleep 2 days if not able to connect for 3 hrs to conserve battery
@@ -118,8 +111,9 @@ const int sevenDaySleepTimer=168; // Long sleep 7 days if not able to connect fo
 const int thirtyDaySleepTimer=720; // Long sleep 30 days if not able to connect for 24 hrs to conserve battery
 const int tenYearDaySleepTimer=87600; // Long sleep 10 Years permanent sleep if not getting connected
 const int configPortalsleepTimerHours=365; // ESP sleep for 15 days  (effectively until reset is clicked manually)
+
 const char *ssid = "SmartKont"; // ESP advertise for Config Portal.
-const char *password = "987654321"; // Not used
+//const char *password = "987654321"; // Not used
 
 // Control the timing of config portal sleep the ESP for 15 days or until reset buttons i clicked
 uint32_t configPortalTimeControl; 
@@ -137,8 +131,9 @@ String networksHTML = ""; // Wifi Netwrok avail
 //const int PIN_RED   = D2; 
 //const int PIN_GREEN = D1; 
 //const int PIN_BLUE  = D7; 
-const int PIN_GREEN = D2;
-const int PIN_RED = D1;
+// CHECK which one is connected to which PIN
+const int PIN_GREEN = D1;
+const int PIN_RED = D2;
 
 
 
@@ -919,8 +914,7 @@ bool sendHttpRequestData (String httpRequestData) {
       Serial.println (httpRequestData.c_str());
 
       httpCode = http.POST(httpRequestData.c_str());   //Send the request after changing the String object to char*
-      //Serial.println("HTTP Response received");
-      //Serial.println(httpCode);
+
 
       if(httpCode == 200) {
 
@@ -939,7 +933,6 @@ bool sendHttpRequestData (String httpRequestData) {
               blinkLED("green", 1);
               httpReturnCode = true;              
             } else {
-              //Serial.println("System will retry automatically in next retry!");
               blinkLED("red", 1);
             }
         } else if (kontSetupflagLocal){
@@ -951,7 +944,6 @@ bool sendHttpRequestData (String httpRequestData) {
             } else {
               // Disconnect Wifi to conserve power
               //disconnectWifi();
-              //Serial.println("Retry: Ask user to press reset button after 1 min to update the mac address and containerId");
               blinkLED("red", 3); // 3 red blink if container is not setup
             }
         }
@@ -973,59 +965,48 @@ bool sendHttpRequestData (String httpRequestData) {
       EEPROM.put(0, user_info);
       EEPROM.commit(); 
 
-     // Serial.print("wifiConCntrLocal increment:");
-      //Serial.println(wifiConCntrLocal);
-
     }
        
     http.end();  //Close connection
     return httpReturnCode;
 }
 
-/*void blink(int b_RED, int b_GREEN, int b_BLUE, int b_times){
-  int b_time = 0;
-  while (b_time < b_times) {
-    setColor(b_RED,b_GREEN,b_BLUE); 
-	  delay(250);
-    setColor(0,0,0);
-    delay(250);
-    b_time++;
-  }
-
-} 
-*/
 
 void blinkLED(String color, int b_times){
-  //Serial.print("Blink LED color:");
-  //Serial.println(color);
-  //Serial.print("Blink LED b_times:");
-  //Serial.println(b_times);
   int b_time = 0;
   if(color == "red") {
     while (b_time < b_times) {
       // Red Blink more steady and bold
-      analogWrite(PIN_RED, 255);
-      delay(1000);
-      analogWrite(PIN_RED, 0);
+      for(int i = 0; i<100; i=i+10){
+        analogWrite(PIN_RED, 255);
+        delay(10);
+        analogWrite(PIN_RED, 0);
+      }
+      
       b_time++;
     }
    }
   else if (color == "green"){
     while (b_time < b_times) {
-      analogWrite(PIN_GREEN, 255);
-      delay(100);
-      analogWrite(PIN_GREEN, 0);
+      for(int i = 0; i<100; i=i+10){
+        analogWrite(PIN_GREEN, 255);
+        delay(10);
+        analogWrite(PIN_GREEN, 0);
+      }
+      
       b_time++;
     }
    } else if (color == "both") {
     // Green Red Blink
      while (b_time < b_times) {
-      analogWrite(PIN_GREEN, 255);
-      delay(500);
-      analogWrite(PIN_GREEN, 0);
-      analogWrite(PIN_RED, 255);
-      delay(500);
-      analogWrite(PIN_RED, 0);
+      for(int i = 0; i<100; i=i+10){
+        analogWrite(PIN_GREEN, 255);
+        delay(50);
+        analogWrite(PIN_GREEN, 0);
+        analogWrite(PIN_RED, 255);
+        delay(50);
+        analogWrite(PIN_RED, 0);
+      }
       b_time++;
     }
     
@@ -1086,8 +1067,6 @@ void deepSleep(const int sleepTimeSecs) {
 
   int sleepTimeSecsCal = sleepTimeSecs * 1000000;
   shutLED();
-  //Serial.print("END! - > Going to deep sleep mode for seconds:");
-  //Serial.println(sleepTimeSecs);
   ESP.deepSleep(sleepTimeSecsCal);
   Serial.println("Wake up!");
 }
@@ -1099,24 +1078,6 @@ void setupLEDPinModes() {
   //pinMode(PIN_BLUE,  OUTPUT);
 }
 
-
-//Set the color of LED
-/*void setColor(int RED, int GREEN, int BLUE) {
-  analogWrite(PIN_RED, RED);
-  analogWrite(PIN_GREEN, GREEN);
-  analogWrite(PIN_BLUE, BLUE);
- /* Serial.println("**************************************");
-  Serial.println("************* Set Color called");
-  Serial.print("************* Color code RED:");
-  Serial.println(RED);
-  Serial.print("************* Color code GREEN:");
-  Serial.println(GREEN);
-  Serial.print("************* Color code BLUE:");
-  Serial.println(BLUE);
-  Serial.println("**************************************");
-  */
-  /*
-}*/
 
 
 // Function to save credentials and containerID in EEROM
@@ -1250,14 +1211,12 @@ do {
 
 
 void loop() {
-//Serial.println("Inside Loop");
-//Serial.print("millis()-configPortalTimeControl:");
-//Serial.println(millis()-configPortalTimeControl);
-// **** comment
-if((millis()-configPortalTimeControl>300000)) { // 5 mins (reduce furthur discuss), this code check needs to revisit based on reset button container.
-  // If config portal is on for more than 2.5 minutes put the ESP to sleep 15 days or until reset button is clicked.
+
+
+// Wait for 5 mins and then go to indefinate sleep 
+if((millis()-configPortalTimeControl>300000)) { 
+  // If config portal is on for more than 5 minutes put the ESP to sleep forever until reset button is clicked
   deepSleep(0);
-  //deepSleep(configPortalsleepTimerHours*3600); 
 }
 
 
