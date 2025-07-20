@@ -66,6 +66,8 @@ struct settings {
   char password[30];
   char containerId[50];
   bool kontSetupflag;
+  int wifiConCntr;
+  //int sleepCycles; // Number of sleepCycles
 
   IPAddress IP;  // Use the Local IP from Serial Output
   IPAddress gateway;     // Use the Gateway IP from Serial Output
@@ -85,6 +87,7 @@ struct settings {
   //char passwordLcl[30] = "NI";
   char containerIdLocal[30];
   bool kontSetupflagLocal;
+  int wifiConCntrLocal;
 
   //Local Variables for wifi connection
   IPAddress ipLocal;
@@ -103,17 +106,25 @@ struct settings {
 // Process controlling variables
 int wifiNotConnCntr = 0; // Number of time wifi is not connected for consecutive times.
 int httpRequestCntr = 0; // Number of time wifi is not connected for consecutive times.
-bool httpRequestFlag = false; // https Send Request Flag, control the number of times http request os sent.
+//bool httpRequestFlag = false; // https Send Request Flag, control the number of times http request os sent.
 bool wifiSavedFlag = false; // Flag to initialize wifi is saved in EEROM
+bool configPortalONFlag = false; // Flag to initialize wifi is saved in EEROM
 bool wifiWrongpasswdOrSSID = false; // Flag to initialize wifi is saved in EEROM
 bool wifiConnected = false; // Flag to initialize wifi is saved in EEROM
 const int sleepTimer=120; // ESP sleep timer
+const int sixhoursSleepTimer=6; // Long sleep 2 days if not able to connect for 3 hrs to conserve battery
+const int twoDaySleepTimer=48; // Long sleep 2 days if not able to connect for 3 hrs to conserve battery
+const int sevenDaySleepTimer=168; // Long sleep 7 days if not able to connect for 24 hrs to conserve battery
+const int thirtyDaySleepTimer=720; // Long sleep 30 days if not able to connect for 24 hrs to conserve battery
+const int tenYearDaySleepTimer=87600; // Long sleep 10 Years permanent sleep if not getting connected
 const int configPortalsleepTimerHours=365; // ESP sleep for 15 days  (effectively until reset is clicked manually)
 const char *ssid = "SmartKont"; // ESP advertise for Config Portal.
 const char *password = "987654321"; // Not used
 
 // Control the timing of config portal sleep the ESP for 15 days or until reset buttons i clicked
 uint32_t configPortalTimeControl; 
+
+// Wifi scan network
 String networksHTML = ""; // Wifi Netwrok avail
 
 
@@ -150,9 +161,11 @@ String ssidToConnect = "";
 String passToConnect = "";
 String containerIdToConnect = "";
 
-void kontSetupRequest() {
-  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send(200, "text/html", R"rawliteral(
+void kontSetupRequest(int wifiConCntrKontSetup) {
+  server.on("/", HTTP_GET, [wifiConCntrKontSetup](AsyncWebServerRequest *request) {
+    //request->send(200, "text/html",
+    
+    String html =  R"rawliteral(
 
 <html>
   <head>
@@ -218,8 +231,10 @@ void kontSetupRequest() {
         Password:
         <input type="password" id="password"><br>
 
+        <div id="containerIdDiv">
         Container ID:
         <input type="text" id="containerId"><br>
+        </div>
 
         <button type="submit" id="saveBtn">Save</button>
       </form>
@@ -251,6 +266,16 @@ void kontSetupRequest() {
     </div>
    
   <script>
+
+  var wifiConCntrKontSetup = )rawliteral";
+
+  html += String(wifiConCntrKontSetup);
+  // -50 just to be on safer side some time -1 is allocated to the wifiConCntrKontSetup which caused container id not to display
+  html += R"rawliteral(;
+
+  if (wifiConCntrKontSetup < -50) {
+    document.getElementById("containerIdDiv").style.display = "none";
+  }
 
   let savedState = null; // Global to keep the status for submitForm
   // Alert Message
@@ -367,8 +392,12 @@ void kontSetupRequest() {
     });
   </script>
 </body></html>
-    )rawliteral");
+    )rawliteral";
+
+  request->send(200, "text/html", html);
   });
+
+  
 
   // POST handler to start connecting to WiFi
   server.on("/startwifi", HTTP_POST, [](AsyncWebServerRequest *request) {
@@ -392,7 +421,7 @@ void kontSetupRequest() {
 
 
   // Polling endpoint to check status
-  server.on("/checkwifi", HTTP_GET, [](AsyncWebServerRequest *request) {
+  server.on("/checkwifi", HTTP_GET, [wifiConCntrKontSetup](AsyncWebServerRequest *request) {
       if(paramMissing) {
         paramMissing = false; // Reset for rentry of id and password
         request->send(200, "application/json", "{\"status\":\"paramMissing\"}");
@@ -403,7 +432,7 @@ void kontSetupRequest() {
 
       int wifiStatusConnectCheck = WiFi.status();
       if (wifiStatusConnectCheck == WL_CONNECTED) {
-        if(saveCredentialNInfo(ssidToConnect, passToConnect, containerIdToConnect)) {
+        if(saveCredentialNInfo(ssidToConnect, passToConnect, containerIdToConnect, wifiConCntrKontSetup)) {
 
             // Blink LED here
             request->send(200, "application/json", "{\"status\":\"connected\"}"); // Connected and Saved Credentials
@@ -481,7 +510,6 @@ void kontSetupRequest() {
         //Serial.println("Scan Networks end!");
         //WiFi.mode(WIFI_AP_STA);
         //WiFiMode_t mode1 = WiFi.getMode();
-      Serial.println("/Networks called");
       Serial.print("ssidList:");
       Serial.println(ssidList);
       request->send(200, "application/json", ssidList);
@@ -495,13 +523,13 @@ void kontSetupRequest() {
 bool restartConfigPortalCustom() {
 
   
-    Serial.println("Restart Config Portal");
+    //Serial.println("Restart Config Portal");
     server.end();                     // Stop server
     WiFi.softAPdisconnect(true);      // Stop AP
     WiFi.mode(WIFI_OFF);              // WIFI OFF
     unsigned long timeout = millis();
     while (WiFi.getMode() != WIFI_OFF && millis() - timeout < 1000) {
-      Serial.println("Restart Config Portal wait");
+      //Serial.println("Restart Config Portal wait");
      delay(10);
     }
 
@@ -525,6 +553,13 @@ void eeromVarCopy() {
   strlcpy(containerIdLocal, user_info.containerId, sizeof(user_info.containerId));
 
   kontSetupflagLocal = user_info.kontSetupflag;
+  wifiConCntrLocal = user_info.wifiConCntr;
+
+  //sleepCyclesLocal = user_info.sleepCycles;
+
+  // Check later why -1 is allocated sometime
+  //Serial.print("wifiConCntrLocal:");
+  //Serial.println(wifiConCntrLocal);
 
   ipLocal = user_info.IP;
   gatewayLocal = user_info.gateway;
@@ -577,15 +612,27 @@ bool wifiConnect() {
 
       int wifiConnectTryCnt = 0; // Config portal is correct but not able to connect to wifi weak signal or some technical issue, try 2 times before give up.
       
-      if(!getWiFiIsSavedCustom() || wifiWrongpasswdOrSSID){
-      // First time no access point is setup EEROM check or wrong password was saved in earlier try or Wifi password changed
+      if(!getWiFiIsSavedCustom() || wifiWrongpasswdOrSSID || wifiConCntrLocal < 0 ) { //|| wifiConCntrLocal > 12){ 
+        // If id/passwd not saved OR wifi id/passwd wrong OR wifiConCntrLocal is less than 0 meaning retry happened for sometime and give up or REtry happend 10 times
+      
+        // First time no access point is setup EEROM check or wrong password was saved in earlier try or Wifi password changed
         
           if(restartConfigPortalCustom()){
               wifiSavedFlag = false; // Config portal started meaning either wifi id/passwd not saved or it is wrong.
               //Serial.println("Restart Config Portal");
+              configPortalONFlag = true;
               oneScanNetworks();
-              kontSetupRequest(); // Setup request with error handling
-              blinkLED("both", 3); // Blink the green light 3 time to start the setup ** Check
+              kontSetupRequest(wifiConCntrLocal); // Setup request with error handling
+              blinkLED("both", 5); // Blink the green light 3 time to start the setup ** Check
+
+/*
+              if(wifiConCntrLocal >= 0) { // wifiid, passwd and container id setup Initial setup
+               
+              } else { // wifi id password changed call the url with only id and password fields and NO container id fields
+                //kontSetupRequest(); // Another version of kontSetupRequest - > wifiSetupRequest()
+                blinkLED("both", 3); // Blink the green light 3 time to start the setup ** Check
+              }
+  */            
           }
       } else { // Access point is already saved.
         wifiSavedFlag = true;
@@ -656,14 +703,13 @@ bool wifiConnect() {
               while (wifiStatus != WL_CONNECTED && !(wifiWrongpasswdOrSSID) && (millis()-wifiConnectTime<15000))  { // Wait for 15 second each time before giving up, change to 10 Seconds
                 
                 if(wifiStatus == WL_NO_SSID_AVAIL) { 
-                  Serial.println("SSID not available, possible wifi connection lost!");
+                  //Serial.println("SSID not available, possible wifi connection lost!");
                   // Break while loop and go to sleep mode
                   break;
-                  // Try in 15 mins for 1 hour if it doesn't work then start the config portal and ask user to setup id/passwd again--- ?? needs to be coded
                 }
                 
                 if (wifiStatus == WL_CONNECT_FAILED) { // Wrong passwd main cause 
-                  Serial.println("Wifi connection failed, start the config portal");
+                  //Serial.println("Wifi connection failed, start the config portal");
                   wifiWrongpasswdOrSSID = true;
                   break;
                 }
@@ -685,10 +731,11 @@ bool wifiConnect() {
                                 String(mac[1], HEX) +(":") + 
                                 String(mac[0], HEX) +(":") ;
                   } else { // Increase the counter to try the wifi again
+                              //Serial.println("Try Again!");
                               wifiConnectTryCnt++;
                               //delay(5000); // Delay 5 second to reconnect if wifi is not connected in first try
                         } 
-          } while((!wifiConnected) && (wifiConnectTryCnt<3) &&  !(wifiWrongpasswdOrSSID) && ((millis()-setupProcessTime)<90000)); // 900000??
+          } while((!wifiConnected) && (wifiConnectTryCnt<3) &&  !(wifiWrongpasswdOrSSID) && ((millis()-setupProcessTime)<50000)); // 31 seconds, will try 2 times quick method and then 1 scan method
       }
       } else {
         // Wifi is connected
@@ -737,13 +784,10 @@ float distanceMeasure() {
   // Put the sensor to sleep as soon distance is measured
   sensrPwrPinSleep();
 
-  //Serial.print("duration:");
-  //Serial.println(duration);
   
   distance = duration/2*.0343; // As of now cosidering speed of sound in dry air (humidity factor not considered)
 
   if(distance>=400 || distance <=.2) { // Distance less than 2 mm and greater than 400 CM
-    //Serial.println("Out of range");
     distance=-1000; // -1000 distance when out of scope
   }
 
@@ -782,7 +826,6 @@ String createHttpRequestSetup (String apikeyValue_f, String userContainerId, flo
 void disconnectWifi(){
     // Disconnect wifi
     //WiFi.disconnect();
-    //Serial.println("Disconnect Wifi!");
     WiFi.disconnect(true);
     WiFi.mode(WIFI_OFF);
 }
@@ -862,6 +905,12 @@ bool sendHttpRequestData (String httpRequestData) {
           saveInfotoEEROM();// kont is setup change the flag
        }
 
+       if(wifiConCntrLocal != 0) {
+        user_info.wifiConCntr = 0;  // If connected set the counter back to 0
+        EEPROM.put(0, user_info);
+        EEPROM.commit(); 
+       }
+
       String postMacAddress = "&mac=";
       httpRequestData = httpRequestData + postMacAddress + macAddress;
       
@@ -919,6 +968,14 @@ bool sendHttpRequestData (String httpRequestData) {
 
     } else {
       wifiNotConnCntr++;
+      //Increase the counter of eerom
+      user_info.wifiConCntr = wifiConCntrLocal+1;  // Increase the counter if wifi is not connected and save into EEROM
+      EEPROM.put(0, user_info);
+      EEPROM.commit(); 
+
+     // Serial.print("wifiConCntrLocal increment:");
+      //Serial.println(wifiConCntrLocal);
+
     }
        
     http.end();  //Close connection
@@ -964,10 +1021,10 @@ void blinkLED(String color, int b_times){
     // Green Red Blink
      while (b_time < b_times) {
       analogWrite(PIN_GREEN, 255);
-      delay(100);
+      delay(500);
       analogWrite(PIN_GREEN, 0);
       analogWrite(PIN_RED, 255);
-      delay(100);
+      delay(500);
       analogWrite(PIN_RED, 0);
       b_time++;
     }
@@ -1000,6 +1057,20 @@ void setupSensorPinModes() {
   pinMode(echoPin,INPUT);
 }
 
+/*
+void longdeepSleep(const int sleepTimeSecs, const int totalSleepCycles) {
+
+  //int totalSleepCycles = sleepTimeSecs/3600;
+  user_info.sleepCycles = totalSleepCycles-1;  // Increase the counter if wifi is not connected and save into EEROM
+  EEPROM.put(0, user_info);
+  EEPROM.commit(); 
+  deepSleep(3600); //Sleep for 1 hour
+
+
+}
+*/
+
+
 // Make the board in deep sleep mode to conserve the battery
 void deepSleep(const int sleepTimeSecs) {
   //Serial.begin(115200);
@@ -1007,18 +1078,16 @@ void deepSleep(const int sleepTimeSecs) {
   // ********** Also add the code to put the sensor in sleep mode
 
     // Long sleep
-    server.end();
-    WiFi.softAPdisconnect(true);
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
+  server.end();
+  WiFi.softAPdisconnect(true);
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(200); // ensure clean shutdown
 
-    delay(200); // ensure clean shutdown
-
-  
   int sleepTimeSecsCal = sleepTimeSecs * 1000000;
   shutLED();
-  Serial.print("END! - > Going to deep sleep mode for seconds:");
-  Serial.println(sleepTimeSecs);
+  //Serial.print("END! - > Going to deep sleep mode for seconds:");
+  //Serial.println(sleepTimeSecs);
   ESP.deepSleep(sleepTimeSecsCal);
   Serial.println("Wake up!");
 }
@@ -1051,12 +1120,16 @@ void setupLEDPinModes() {
 
 
 // Function to save credentials and containerID in EEROM
-bool saveCredentialNInfo(String ssid, String password, String containerId) {
+bool saveCredentialNInfo(String ssid, String password, String containerId, int wifiConCntrKontSetup) {
     strlcpy(user_info.init,  eeromCheck, sizeof(user_info.init) );
     strlcpy(user_info.userWifiId, ssid.c_str(), sizeof(ssid) );
     strlcpy(user_info.password, password.c_str(), sizeof(password) );
-    strlcpy(user_info.containerId, containerId.c_str(), sizeof(containerId) );
+    if(wifiConCntrKontSetup >= 0) {
+      strlcpy(user_info.containerId, containerId.c_str(), sizeof(containerId) );
+    }
     user_info.kontSetupflag = true;
+    user_info.wifiConCntr = 0;
+    //user_info.sleepCycles = 0;
 
     user_info.init[2] = '\0';
 
@@ -1072,6 +1145,7 @@ bool saveCredentialNInfo(String ssid, String password, String containerId) {
 void setup() {
   Serial.begin(115200);
   Serial.println("Start");
+
   digitalWrite(snsrPwrPin, HIGH);
   
   // Set wifi to station mode
@@ -1102,6 +1176,7 @@ void setup() {
   // Make a local copy of EEROM 
   eeromVarCopy();
 
+  
   String requestMasterData = createHttpMasterData();
 
 do {
@@ -1109,7 +1184,7 @@ do {
       
       if (requestStat) { 
       // If request is sent then go to deepSleep mode. There is a hack in sendHttpRequestData which will return true even if request isnot sent successfully so that chip go to sleep mode.
-        Serial.println("Going to Sleep");
+        Serial.println("Sleep the ESP Normal");
         deepSleep(sleepTimer); //Send a request every x seconds
         Serial.println("Wake up from sleep mode!!!");
       } else {
@@ -1118,11 +1193,51 @@ do {
 
     /* Wifi reconnect already try 3 time in wifi connect function so if still not connected then sleep; 
       if wifi is connected but still http request not send then try again and same wifi connection will be used */ 
-  if((wifiNotConnCntr>=1 && wifiSavedFlag) || (httpRequestCntr >=2 && wifiSavedFlag)) { // Restart ESP if wifiConnect is not working for 2 time in a sequence.
-        Serial.println("Sleep the ESP");
+  if((wifiNotConnCntr>=1 && wifiSavedFlag && !configPortalONFlag) || (httpRequestCntr >=2 && wifiSavedFlag && !configPortalONFlag)) { // Restart ESP if wifiConnect is not working for 2 time in a sequence.
         disconnectWifi();
-        deepSleep(sleepTimer); // let it go to sleep for 30 mins, if it doesn't more retry alert can be made visible on app that recording is not happening, please check wifi strength
-        //restartESP();
+        if(wifiConCntrLocal <= 12 && wifiConCntrLocal >= 0) { // If no connection for 6 hours 
+          Serial.println("Sleep the ESP wifiConCntrLocal =< 12");
+          deepSleep(sleepTimer); // let it go to sleep for 30 mins, if it doesn't more retry alert can be made visible on app that recording is not happening, please check wifi strength
+        }else { // When reached 24 hours of trying
+          Serial.println("Sleep the ESP wifiConCntrLocal forever");
+          user_info.wifiConCntr = -100;  // Reset to -1 default is 0, -1 will be used to try one more time after, setting to -100 as it will increment each time reset is clicked and set to 0 when id passwd saved
+          EEPROM.put(0, user_info);
+          EEPROM.commit(); 
+          deepSleep(0); // Sleep forever until reset button is pressed
+          //restartESP();
+        }
+
+/*
+          // If counter # of time failed to send http request reset and go to do deep sleep forever
+        if(wifiConCntrLocal=4) { // If no connection for 3 hours 
+          Serial.println("Sleep the ESP wifiConCntrLocal =4");
+          // Sleep for 6 hours
+          longdeepSleep(sixhoursSleepTimer*3600, sixhoursSleepTimer); // 1 hour sleep cycle and hence number of sleep cycle is same as number of hours for sleep
+
+        } else if (wifiConCntrLocal=8) { // Total try 10 times 6 intial in 3 hours and then additional 4 after 2 days
+          Serial.println("Sleep the ESP wifiConCntrLocal =8");
+          // Sleep for 2 days
+          longdeepSleep(twoDaySleepTimer*3600, twoDaySleepTimer); // 1 hour sleep cycle and hence number of sleep cycle is same as number of hours for sleep
+        } else if (wifiConCntrLocal=12) { // Total try 10 times 6 intial in 3 hours and then additional 4 after 2 days
+          Serial.println("Sleep the ESP wifiConCntrLocal =12");
+          // Sleep for 7 days
+          longdeepSleep(sevenDaySleepTimer*3600, sevenDaySleepTimer); // 1 hour sleep cycle and hence number of sleep cycle is same as number of hours for sleep
+        //} else if (wifiConCntrLocal=14) { // Total try 14 times 6 intial in 3 hours and then additional 4 after 2 days and additional 4 after 7 days
+         // deepSleep(thirtyDaySleepTimer*3600); // Sleep for 30 days
+        } else if (wifiConCntrLocal=16) { // Total try 14 times 6 intial in 3 hours and then additional 4 after 2 days and additional 4 after 7 days and additional 4 after 30 days
+          // Reset the times
+          Serial.println("Sleep the ESP wifiConCntrLocal =16");
+          user_info.wifiConCntr = -100;  // Reset to -1 default is 0, -1 will be used to try one more time after, setting to -100 as it will increment each time reset is clicked and set to 0 when id passwd saved
+          EEPROM.put(0, user_info);
+          EEPROM.commit(); 
+          // Sleep for 10 Years until reset is pressed
+          longdeepSleep(tenYearDaySleepTimer*3600, tenYearDaySleepTimer); // 1 hour sleep cycle and hence number of sleep cycle is same as number of hours for sleep
+        } else {
+          Serial.println("Sleep the ESP wifiConCntrLocal < 4");
+          deepSleep(sleepTimer); // let it go to sleep for 30 mins, if it doesn't more retry alert can be made visible on app that recording is not happening, please check wifi strength
+          //restartESP();
+        }
+        */
   } // Saving something to permanent memory so it doesn't go in infinite loop after number of retiries to save batteries.
 
 } while(wifiNotConnCntr < 1 && wifiSavedFlag && httpRequestCntr < 3); // Retry 2 times ESP will restart after 2 tries? should it go to sleep
@@ -1141,8 +1256,8 @@ void loop() {
 // **** comment
 if((millis()-configPortalTimeControl>300000)) { // 5 mins (reduce furthur discuss), this code check needs to revisit based on reset button container.
   // If config portal is on for more than 2.5 minutes put the ESP to sleep 15 days or until reset button is clicked.
-
-  deepSleep(configPortalsleepTimerHours*3600);
+  deepSleep(0);
+  //deepSleep(configPortalsleepTimerHours*3600); 
 }
 
 
