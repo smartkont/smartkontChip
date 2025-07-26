@@ -539,6 +539,7 @@ bool restartConfigPortalCustom() {
 }
 
 void eeromVarCopy() {
+  // Not using CRC32 check to avoid battery over usage
   EEPROM.begin(sizeof(struct settings) );
   EEPROM.get(0, user_info );
  
@@ -579,6 +580,7 @@ bool getWiFiIsSavedCustom(){
   return wifiPasswdSaved;
 }
 
+
 /*need find alternative to this function and edit the list dynamically*/
 void oneScanNetworks() {
   // Accessing global ssidList
@@ -602,6 +604,7 @@ void oneScanNetworks() {
 // Connect to Wifi network
 // Wifi connect trying 3 time 2 with regular connect and one with scan method connect
 bool wifiConnect() {
+  //Serial.println("wifiConnect before");
 
   if(WiFi.status() != WL_CONNECTED) {
 
@@ -708,7 +711,9 @@ bool wifiConnect() {
                   wifiWrongpasswdOrSSID = true;
                   break;
                 }
-                Serial.print(".");
+                // Yield is better option as per books but delay is better in terms of realtime testing by .5 to .9 seconds in some cases with yield total time is around 3.7 to 3.9 second however with delay it is around 3.2 seconds
+                //Serial.print(".");
+                //yield();
                 delay(100); // .25 second delay in checking the status
                 wifiStatus = WiFi.status();
               }
@@ -729,7 +734,7 @@ bool wifiConnect() {
                               //Serial.println("Try Again!");
                               wifiConnectTryCnt++;
                               //delay(5000); // Delay 5 second to reconnect if wifi is not connected in first try
-                        } 
+                        }
           } while((!wifiConnected) && (wifiConnectTryCnt<3) &&  !(wifiWrongpasswdOrSSID) && ((millis()-setupProcessTime)<50000)); // 31 seconds, will try 2 times quick method and then 1 scan method
       }
       } else {
@@ -901,6 +906,7 @@ bool sendHttpRequestData (String httpRequestData) {
        }
 
        if(wifiConCntrLocal != 0) {
+        Serial.println("wifiConCntrLocal inside");
         user_info.wifiConCntr = 0;  // If connected set the counter back to 0
         EEPROM.put(0, user_info);
         EEPROM.commit(); 
@@ -915,10 +921,7 @@ bool sendHttpRequestData (String httpRequestData) {
 
       httpCode = http.POST(httpRequestData.c_str());   //Send the request after changing the String object to char*
 
-
       if(httpCode == 200) {
-
-
         // Payload 1 Success and 0 Failure
        const String& payload = removeSpaces(http.getString());
        
@@ -931,7 +934,7 @@ bool sendHttpRequestData (String httpRequestData) {
               // Disconnect Wifi to conserve power
               disconnectWifi();
               blinkLED("green", 1);
-              httpReturnCode = true;              
+              httpReturnCode = true;    
             } else {
               blinkLED("red", 1);
             }
@@ -977,10 +980,11 @@ void blinkLED(String color, int b_times){
   if(color == "red") {
     while (b_time < b_times) {
       // Red Blink more steady and bold
-      for(int i = 0; i<100; i=i+10){
+      for(int i = 0; i<5; i++){
         analogWrite(PIN_RED, 255);
         delay(10);
         analogWrite(PIN_RED, 0);
+        delay(100);
       }
       
       b_time++;
@@ -988,10 +992,11 @@ void blinkLED(String color, int b_times){
    }
   else if (color == "green"){
     while (b_time < b_times) {
-      for(int i = 0; i<100; i=i+10){
+      for(int i = 0; i<5; i++){
         analogWrite(PIN_GREEN, 255);
         delay(10);
         analogWrite(PIN_GREEN, 0);
+        delay(100);
       }
       
       b_time++;
@@ -1067,6 +1072,7 @@ void deepSleep(const int sleepTimeSecs) {
 
   int sleepTimeSecsCal = sleepTimeSecs * 1000000;
   shutLED();
+  Serial.println("Sleep END!");
   ESP.deepSleep(sleepTimeSecsCal);
   Serial.println("Wake up!");
 }
@@ -1077,7 +1083,6 @@ void setupLEDPinModes() {
   pinMode(PIN_GREEN, OUTPUT);
   //pinMode(PIN_BLUE,  OUTPUT);
 }
-
 
 
 // Function to save credentials and containerID in EEROM
@@ -1096,18 +1101,62 @@ bool saveCredentialNInfo(String ssid, String password, String containerId, int w
 
     user_info.userWifiId[ssid.length()] = user_info.password[password.length()] = user_info.containerId[containerId.length()] = '\0';
 
-    EEPROM.put(0, user_info);
-    EEPROM.commit();
+
+    writeStructWithCRC(0, user_info);
+    //EEPROM.put(0, user_info);
+    //EEPROM.commit();
     wifiSavedFlag = true;
-  return true;
+  return readStructWithCRC(0, user_info);
 }
+
+
+
+// crc32 calculation function
+uint32_t crc32(const uint8_t *data, size_t length) {
+  uint32_t crc = 0xFFFFFFFF;
+  while (length--) {
+    crc ^= *data++;
+    for (int i = 0; i < 8; i++) {
+      crc = (crc >> 1) ^ (0xEDB88320 & -(crc & 1));
+    }
+  }
+  return ~crc;
+}
+
+
+template <typename T>
+void writeStructWithCRC(int eepromAddress, const T &data) {
+  EEPROM.put(eepromAddress, data);
+
+  uint32_t crc = crc32((uint8_t *)&data, sizeof(T));
+  EEPROM.put(eepromAddress + sizeof(T), crc);
+
+  EEPROM.commit(); // Save to EEROM user_info and CRC
+}
+
+
+template <typename T>
+bool readStructWithCRC(int eepromAddress, T &data) {
+  // Read struct
+  EEPROM.get(eepromAddress, data);
+
+  // Read stored CRC
+  uint32_t storedCRC;
+  EEPROM.get(eepromAddress + sizeof(T), storedCRC);
+
+  // Compute CRC of data
+  uint32_t computedCRC = crc32((uint8_t *)&data, sizeof(T));
+
+  return (computedCRC == storedCRC);
+}
+
 
 
 void setup() {
   Serial.begin(115200);
   Serial.println("Start");
 
-  digitalWrite(snsrPwrPin, HIGH);
+  //digitalWrite(snsrPwrPin, HIGH); // Twice needed?
   
   // Set wifi to station mode
   
@@ -1123,8 +1172,8 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
   digitalWrite(LED_BUILTIN, HIGH);
 
-  
-  delay(100);// Can this be reduced furthur?? 
+  //yield();
+  //delay(100);// Can this be reduced furthur?? 
   
   // Set Input output pins
 //  setupSensorPinModes();
@@ -1136,7 +1185,6 @@ void setup() {
 
   // Make a local copy of EEROM 
   eeromVarCopy();
-
   
   String requestMasterData = createHttpMasterData();
 
@@ -1145,7 +1193,7 @@ do {
       
       if (requestStat) { 
       // If request is sent then go to deepSleep mode. There is a hack in sendHttpRequestData which will return true even if request isnot sent successfully so that chip go to sleep mode.
-        Serial.println("Sleep the ESP Normal");
+        //Serial.println("Sleep the ESP Normal");
         deepSleep(sleepTimer); //Send a request every x seconds
         Serial.println("Wake up from sleep mode!!!");
       } else {
@@ -1205,6 +1253,7 @@ do {
 
 
  configPortalTimeControl=millis(); 
+ 
 }
 
 
