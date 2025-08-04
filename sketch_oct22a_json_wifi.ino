@@ -347,7 +347,7 @@ void kontSetupRequest(int wifiConCntrKontSetup) {
       ">
         <h3 id="modalTitle">Status</h3>
         <p id="modalMessage">Message</p>
-        <button onclick="closeModal()">OK</button>
+        <button id="modalOkButton" onclick="closeModal()">OK</button>
       </div>
     </div>
    
@@ -371,6 +371,34 @@ void kontSetupRequest(int wifiConCntrKontSetup) {
     document.getElementById('wifiModal').style.display = 'block';
 
   }
+
+// This is temporary should wait in application
+function showModalWifiSaved(title, message) {
+  const modal = document.getElementById('wifiModal');
+  const titleEl = document.getElementById('modalTitle');
+  const messageEl = document.getElementById('modalMessage');
+  const okButton = document.getElementById('modalOkButton');
+
+  titleEl.innerText = title;
+  okButton.style.display = 'none'; // Hide OK button initially
+  modal.style.display = 'block';
+
+  let countdown = 15;
+  messageEl.innerText = `${message}\n\nSetting-up your smartKont, Wait ${countdown} seconds...`;
+
+  const timer = setInterval(() => {
+    countdown--;
+    if (countdown > 0) {
+      messageEl.innerText = `${message}\n\nSetting-up your smartKont, Wait ${countdown} seconds...`;
+    } else {
+      clearInterval(timer);
+      messageEl.innerText = message;
+      okButton.style.display = 'inline-block'; // Now show the OK button
+    }
+  }, 1000);
+}
+
+ 
 
   function closeModal() {
     if(savedState === 'connected') {
@@ -473,7 +501,8 @@ void kontSetupRequest(int wifiConCntrKontSetup) {
               if(res.status === 'connected'){
                 clearInterval(interval);
                 hideSpinner();
-                showModal("WiFi Saved!", "Press Ok for next Step");
+                showModalWifiSaved("WiFi Saved!", "Press reset button at bottom of container");
+                //showModal("WiFi Saved!", "Press ok to continue"); // This should be final one
               } else if (res.status === 'paramMissing') {
                 clearInterval(interval);
                 hideSpinner();
