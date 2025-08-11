@@ -290,6 +290,63 @@ void kontSetupRequest(int wifiConCntrKontSetup) {
 
   </style>
 
+<style>
+  /* Container must be relative for popup absolute positioning */
+  .content {
+    position: relative;
+  }
+
+  /* Help button styles */
+  #helpBtn {
+    border: none;
+    background: none;
+    padding: 0;
+    margin-left: 5px;
+    cursor: pointer;
+    vertical-align: middle;
+    width: 18px;
+    height: 18px;
+  }
+
+  #helpBtn img {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  /* Popup text box */
+.popup {
+  display: none;
+  position: absolute;
+  top: 28px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 0.9em;
+  max-width: 450px;       /* made wider */
+  max-height: 3.2em;      /* keeps height for ~3 lines */
+  line-height: 1.4em;
+  overflow-y: auto;
+  word-wrap: break-word;
+  white-space: normal;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+  z-index: 10;
+}
+
+  .popup::after {
+    content: "";
+    position: absolute;
+    top: -6px;
+    left: 10px;
+    border-width: 6px;
+    border-style: solid;
+    border-color: transparent transparent #333 transparent;
+  }
+</style>
+
 
   </head>
 
@@ -298,10 +355,18 @@ void kontSetupRequest(int wifiConCntrKontSetup) {
     <div class="content">
       <form id="wifiForm">
         SSID:
-        <select id="ssid"></select><br>
+
+   <!-- Help button with your custom icon -->
+    <button type="button" id="helpBtn" aria-label="WiFi help">
+      💡
+    </button>
+    <div id="popupHelp" class="popup">If WiFi not in list, restart the process by click reset button and restart the application</div>
+
+    <select id="ssid"></select>
+    <br>
 
         Password:
-      <div class="password-container">
+        <div class="password-container">
         <input type="password" id="password" placeholder="Enter WiFi Password">
         <span id="togglePassword" class="toggle-password" role="button" tabindex="0" aria-label="Toggle password visibility">👁️</span>
       </div>
@@ -318,7 +383,7 @@ void kontSetupRequest(int wifiConCntrKontSetup) {
         <div id="overlay" class="overlay" style="display:none;"></div>
         <div id="spinnerModal" class="modal" style="display:none;">
           <div class="modal-content">
-            <p>Setting up smartKont...</p>
+            <p>Setting up smartKont</p>
             <div class="spinner"></div>
           </div>
         </div>
@@ -378,26 +443,64 @@ function showModalWifiSaved(title, message) {
   const titleEl = document.getElementById('modalTitle');
   const messageEl = document.getElementById('modalMessage');
   const okButton = document.getElementById('modalOkButton');
+  const modalContent = modal.querySelector('div');
+
+  console.log('modalContent:', modalContent);
+
+  if (!modalContent) {
+    console.error('modalContent div not found!');
+    return;
+  }
 
   titleEl.innerText = title;
   okButton.style.display = 'none'; // Hide OK button initially
   modal.style.display = 'block';
 
-  let countdown = 15;
-  messageEl.innerText = `${message}\n\nSetting-up your smartKont, Wait ${countdown} seconds...`;
+  messageEl.innerText = message;
 
-  const timer = setInterval(() => {
-    countdown--;
-    if (countdown > 0) {
-      messageEl.innerText = `${message}\n\nSetting-up your smartKont, Wait ${countdown} seconds...`;
-    } else {
-      clearInterval(timer);
-      messageEl.innerText = message;
-      okButton.style.display = 'inline-block'; // Now show the OK button
-    }
-  }, 1000);
+  // Create or get Done button
+  let doneButton = document.getElementById('modalDoneButton');
+  if (!doneButton) {
+    doneButton = document.createElement('button');
+    doneButton.id = 'modalDoneButton';
+    doneButton.textContent = 'Done';
+    doneButton.style.marginTop = '10px';
+    doneButton.style.padding = '8px 16px';
+    doneButton.style.fontSize = '1em';
+    doneButton.style.display = 'none'; // hide initially
+    modalContent.appendChild(doneButton);
+  }
+
+  // Show Done button after 5 seconds
+  setTimeout(() => {
+    doneButton.style.display = 'inline-block';
+  }, 5000);
+
+  doneButton.onclick = () => {
+    doneButton.style.display = 'none'; // hide done button when countdown starts
+    modal.style.display = 'none';
+    messageEl.innerText = '';
+    titleEl.innerText = '';
+
+    let dots = 1;
+    let countdown = 15;
+
+    showSpinner();
+
+    const timer = setInterval(() => {
+      countdown--;
+      if (countdown > 0) {
+      } else {
+        clearInterval(timer);
+        hideSpinner();
+        modal.style.display = 'block';
+        titleEl.innerText = '';
+        messageEl.innerText = 'Press ok for next steps';
+        okButton.style.display = 'inline-block';
+      }
+    }, 1000);
+  };
 }
-
  
 
   function closeModal() {
@@ -451,6 +554,25 @@ function showModalWifiSaved(title, message) {
     });
 
 
+
+
+   const helpBtn = document.getElementById('helpBtn');
+  const popup = document.getElementById('popupHelp');
+
+  helpBtn.addEventListener('click', function () {
+    popup.style.display = popup.style.display === 'block' ? 'none' : 'block';
+  });
+
+  // Close popup when clicking outside
+  document.addEventListener('click', function (e) {
+    if (!helpBtn.contains(e.target) && !popup.contains(e.target)) {
+      popup.style.display = 'none';
+    }
+  });
+
+
+
+
     // Load SSIDs into dropdown
     fetch('/networks')
       .then(res => res.json())
@@ -501,7 +623,7 @@ function showModalWifiSaved(title, message) {
               if(res.status === 'connected'){
                 clearInterval(interval);
                 hideSpinner();
-                showModalWifiSaved("WiFi Saved!", "Press reset button at bottom of container");
+                showModalWifiSaved("WiFi Saved!", "Press reset button at the bottom of the container and wait for GREEN light to flash");
                 //showModal("WiFi Saved!", "Press ok to continue"); // This should be final one
               } else if (res.status === 'paramMissing') {
                 clearInterval(interval);
@@ -646,7 +768,7 @@ function showModalWifiSaved(title, message) {
       WiFi.scanDelete();  // Clean up memory
 
   */
-      extern String ssidList;
+     
 
       //  int n = WiFi.scanNetworks();
       //  Serial.println("Scan Networks done");
@@ -659,9 +781,15 @@ function showModalWifiSaved(title, message) {
         //Serial.println("Scan Networks end!");
         //WiFi.mode(WIFI_AP_STA);
         //WiFiMode_t mode1 = WiFi.getMode();
+
+
+      extern String ssidList;
       Serial.print("ssidList:");
       Serial.println(ssidList);
       request->send(200, "application/json", ssidList);
+
+
+
  //  }
   });
 
